@@ -4,7 +4,9 @@ import librosa
 import numpy as np
 import pandas as pd
 import librosa.display
+import tensorflow as tf
 from datetime import datetime 
+import matplotlib.pyplot as plt
 from keras.models import Sequential
 from keras.utils import to_categorical
 from keras.layers import Dense, Dropout
@@ -18,12 +20,13 @@ Data_path = '/Users/hamid/Box Sync/GitHub/Sound Event Detection/UrbanSound Datas
 max_pad_len = 174
 
 def extract_features(file_name):
-   
+    
     try:
         audio, sample_rate = librosa.load(file_name, res_type='kaiser_fast') 
-        mfccs = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=40)
+        mfccs = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=60)
         pad_width = max_pad_len - mfccs.shape[1]
         mfccs = np.pad(mfccs, pad_width=((0, 0), (0, pad_width)), mode='constant')
+        mfccs = mfccs - (np.mean(mfccs, axis=0))
         
     except Exception as e:
         print("Error encountered while parsing file: ", file_name)
@@ -66,7 +69,7 @@ yy = to_categorical(le.fit_transform(y))
 
 x_train, x_test, y_train, y_test = train_test_split(X, yy, test_size=0.2, random_state = 42)
 
-num_rows = 40
+num_rows = 60
 num_columns = 174
 num_channels = 1
 
@@ -109,8 +112,8 @@ accuracy = 100*score[1]
 
 print("Pre-training accuracy: %.4f%%" % accuracy)
 
-num_epochs = 12
-num_batch_size = 128
+num_epochs = 120
+num_batch_size = 8
 
 #num_epochs = 70
 #num_batch_size = 260
@@ -119,7 +122,7 @@ checkpointer = ModelCheckpoint(filepath='saved_models/weights.best.basic_cnn.hdf
                                verbose=1, save_best_only=True)
 start = datetime.now()
 
-model.fit(x_train, y_train, batch_size=num_batch_size, epochs=num_epochs, validation_data=(x_test, y_test), callbacks=[checkpointer], verbose=1)
+history = model.fit(x_train, y_train, batch_size=num_batch_size, epochs=num_epochs, validation_data=(x_test, y_test), callbacks=[checkpointer], verbose=1)
 
 
 duration = datetime.now() - start
@@ -132,30 +135,36 @@ print("Training Accuracy: ", score[1])
 score = model.evaluate(x_test, y_test, verbose=0)
 print("Testing Accuracy: ", score[1])
 
-def extract_feature(file_name):
-   
-    try:
-        audio_data, sample_rate = librosa.load(file_name, res_type='kaiser_fast') 
-        mfccs = librosa.feature.mfcc(y=audio_data, sr=sample_rate, n_mfcc=40)
-        mfccsscaled = np.mean(mfccs.T,axis=0)
-        
-    except Exception as e:
-        print("Error encountered while parsing file: ", file)
-        return None, None
-
-    return np.array([mfccsscaled])
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('model accuracy')
+plt.ylabel('accuracy')
+plt.xlabel('epoch')
+plt.legend(['train', 'val'], loc='upper left')
+plt.show()
 
 def print_prediction(file_name):
-    prediction_feature = extract_feature(file_name) 
-
+    
+    prediction_feature = extract_features(file_name)
+    prediction_feature = prediction_feature.reshape(1, num_rows, num_columns, num_channels)
+    
     predicted_vector = model.predict_classes(prediction_feature)
-    predicted_class = le.inverse_transform(predicted_vector) 
-    print("The predicted class is:", predicted_class[0], '\n') 
-
-    predicted_proba_vector = model.predict(prediction_feature) 
+    predicted_class = le.inverse_transform(predicted_vector)
+    print("The predicted class is:", predicted_class[0], '\n')
+    
+    predicted_proba_vector = model.predict_proba(prediction_feature)
     predicted_proba = predicted_proba_vector[0]
-    for i in range(len(predicted_proba)): 
+    for i in range(len(predicted_proba)):
         category = le.inverse_transform(np.array([i]))
         print(category[0], "\t\t : ", format(predicted_proba[i], '.32f') )
+        
+# Validation
+# Class: Air Conditioner
+filename = os.path.join(Data_path, '100852-0-0-0.wav' )
+print_prediction(filename)
+
+tf.keras.models.save_model(model, 'VoiceDetectModel.hdf5')
+
+
         
         
